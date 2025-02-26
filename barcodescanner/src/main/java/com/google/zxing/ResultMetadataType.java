@@ -56,6 +56,18 @@ public enum ResultMetadataType {
   ERROR_CORRECTION_LEVEL,
 
   /**
+   * The number of errors corrected. If applicable, maps to an {@link Integer} of value
+   * greater than or equal to zero.
+   */
+  ERRORS_CORRECTED,
+
+  /**
+   * The number of erasures corrected. If applicable, maps to an {@link Integer} of value
+   * greater than or equal to zero.
+   */
+  ERASURES_CORRECTED,
+
+  /**
    * For some periodicals, indicates the issue number as an {@link Integer}.
    */
   ISSUE_NUMBER,
@@ -64,7 +76,7 @@ public enum ResultMetadataType {
    * For some products, indicates the suggested retail price in the barcode as a
    * formatted {@link String}.
    */
-  SUGGESTED_PRICE ,
+  SUGGESTED_PRICE,
 
   /**
    * For some products, the possible country of manufacture as a {@link String} denoting the
@@ -73,12 +85,12 @@ public enum ResultMetadataType {
   POSSIBLE_COUNTRY,
 
   /**
-   * For some products, the extension text
+   * For some products, the extension text.
    */
   UPC_EAN_EXTENSION,
 
   /**
-   * PDF417-specific metadata
+   * PDF417-specific metadata.
    */
   PDF417_EXTRA_METADATA,
 
@@ -93,5 +105,11 @@ public enum ResultMetadataType {
    * parity is given with it.
    */
   STRUCTURED_APPEND_PARITY,
-  
+
+  /**
+   * Barcode Symbology Identifier.
+   * Note: According to the GS1 specification the identifier may have to replace a leading FNC1/GS character
+   * when prepending to the barcode content.
+   */
+  SYMBOLOGY_IDENTIFIER,
 }

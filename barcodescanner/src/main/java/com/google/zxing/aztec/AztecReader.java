@@ -61,9 +61,11 @@ public final class AztecReader implements Reader {
     Detector detector = new Detector(image.getBlackMatrix());
     ResultPoint[] points = null;
     DecoderResult decoderResult = null;
+    int errorsCorrected = 0;
     try {
       AztecDetectorResult detectorResult = detector.detect(false);
       points = detectorResult.getPoints();
+      errorsCorrected = detectorResult.getErrorsCorrected();
       decoderResult = new Decoder().decode(detectorResult);
     } catch (NotFoundException e) {
       notFoundException = e;
@@ -74,6 +76,7 @@ public final class AztecReader implements Reader {
       try {
         AztecDetectorResult detectorResult = detector.detect(true);
         points = detectorResult.getPoints();
+        errorsCorrected = detectorResult.getErrorsCorrected();
         decoderResult = new Decoder().decode(detectorResult);
       } catch (NotFoundException | FormatException e) {
         if (notFoundException != null) {
@@ -101,7 +104,7 @@ public final class AztecReader implements Reader {
                                points,
                                BarcodeFormat.AZTEC,
                                System.currentTimeMillis());
-    
+
     List<byte[]> byteSegments = decoderResult.getByteSegments();
     if (byteSegments != null) {
       result.putMetadata(ResultMetadataType.BYTE_SEGMENTS, byteSegments);
@@ -110,7 +113,10 @@ public final class AztecReader implements Reader {
     if (ecLevel != null) {
       result.putMetadata(ResultMetadataType.ERROR_CORRECTION_LEVEL, ecLevel);
     }
-    
+    errorsCorrected += decoderResult.getErrorsCorrected();
+    result.putMetadata(ResultMetadataType.ERRORS_CORRECTED, errorsCorrected);
+    result.putMetadata(ResultMetadataType.SYMBOLOGY_IDENTIFIER, "]z" + decoderResult.getSymbologyModifier());
+
     return result;
   }
 

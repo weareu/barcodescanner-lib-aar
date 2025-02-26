@@ -29,10 +29,10 @@ import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.View;
 
+import barcodescanner.xservices.nl.barcodescanner.R;
+
 import java.util.ArrayList;
 import java.util.List;
-
-import barcodescanner.xservices.nl.barcodescanner.R;
 
 /**
  * This view is overlaid on top of the camera preview. It adds the viewfinder rectangle and partial

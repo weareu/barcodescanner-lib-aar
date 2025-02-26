@@ -31,6 +31,7 @@ import com.google.zxing.DecodeHintType;
 import com.google.zxing.FormatException;
 import com.google.zxing.NotFoundException;
 import com.google.zxing.Result;
+import com.google.zxing.ResultMetadataType;
 import com.google.zxing.ResultPoint;
 import com.google.zxing.common.BitArray;
 import com.google.zxing.common.detector.MathUtils;
@@ -40,7 +41,9 @@ import com.google.zxing.oned.rss.FinderPattern;
 import com.google.zxing.oned.rss.RSSUtils;
 import com.google.zxing.oned.rss.expanded.decoders.AbstractExpandedDecoder;
 
+import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +59,7 @@ public final class RSSExpandedReader extends AbstractRSSReader {
   private static final int[] EVEN_TOTAL_SUBSET = {4, 20, 52, 104, 204};
   private static final int[] GSUM = {0, 348, 1388, 2948, 3988};
 
+  /** Finder pattern element widths, from section 7.2.7 of ISO/IEC 24724:2006. */
   private static final int[][] FINDER_PATTERNS = {
     {1,8,4,1}, // A
     {3,6,4,1}, // B
@@ -65,6 +69,7 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     {2,2,9,1}  // F
   };
 
+  /** The element weights used in the checksum calculation, from section 7.2.6 of ISO/IEC 24724:2006. */
   private static final int[][] WEIGHTS = {
     {  1,   3,   9,  27,  81,  32,  96,  77},
     { 20,  60, 180, 118, 143,   7,  21,  63},
@@ -98,6 +103,8 @@ public final class RSSExpandedReader extends AbstractRSSReader {
   private static final int FINDER_PAT_E = 4;
   private static final int FINDER_PAT_F = 5;
 
+  /** The possible finder pattern sequences, from section 7.2.7 of ISO/IEC 24724:2006. */
+  @SuppressWarnings("checkstyle:lineLength")
   private static final int[][] FINDER_PATTERN_SEQUENCES = {
     { FINDER_PAT_A, FINDER_PAT_A },
     { FINDER_PAT_A, FINDER_PAT_B, FINDER_PAT_B },
@@ -113,6 +120,10 @@ public final class RSSExpandedReader extends AbstractRSSReader {
 
   private static final int MAX_PAIRS = 11;
 
+  private static final float FINDER_PATTERN_MODULES = 15f;
+  private static final float DATA_CHARACTER_MODULES = 17f;
+  private static final float MAX_FINDER_PATTERN_DISTANCE_VARIANCE = 0.1f;
+
   private final List<ExpandedPair> pairs = new ArrayList<>(MAX_PAIRS);
   private final List<ExpandedRow> rows = new ArrayList<>();
   private final int [] startEnd = new int[2];
@@ -122,9 +133,7 @@ public final class RSSExpandedReader extends AbstractRSSReader {
   public Result decodeRow(int rowNumber,
                           BitArray row,
                           Map<DecodeHintType,?> hints) throws NotFoundException, FormatException {
-    // Rows can start with even pattern in case in prev rows there where odd number of patters.
-    // So lets try twice
-    this.pairs.clear();
+    // Rows can start with even pattern if previous rows had an odd number of patterns, so we try twice.
     this.startFromEven = false;
     try {
       return constructResult(decodeRow2pairs(rowNumber, row));
@@ -132,7 +141,6 @@ public final class RSSExpandedReader extends AbstractRSSReader {
       // OK
     }
 
-    this.pairs.clear();
     this.startFromEven = true;
     return constructResult(decodeRow2pairs(rowNumber, row));
   }
@@ -145,25 +153,26 @@ public final class RSSExpandedReader extends AbstractRSSReader {
 
   // Not private for testing
   List<ExpandedPair> decodeRow2pairs(int rowNumber, BitArray row) throws NotFoundException {
-    try {
-      while (true) {
-        ExpandedPair nextPair = retrieveNextPair(row, this.pairs, rowNumber);
-        this.pairs.add(nextPair);
+    this.pairs.clear();
+    boolean done = false;
+    while (!done) {
+      try {
+        this.pairs.add(retrieveNextPair(row, this.pairs, rowNumber));
+      } catch (NotFoundException nfe) {
+        if (this.pairs.isEmpty()) {
+          throw nfe;
+        }
         // exit this loop when retrieveNextPair() fails and throws
-      }
-    } catch (NotFoundException nfe) {
-      if (this.pairs.isEmpty()) {
-        throw nfe;
+        done = true;
       }
     }
 
-    // TODO: verify sequence of finder patterns as in checkPairSequence()
-    if (checkChecksum()) {
+    if (checkChecksum() && isValidSequence(this.pairs, true)) {
       return this.pairs;
     }
-    
+
     boolean tryStackedDecode = !this.rows.isEmpty();
-    storeRow(rowNumber, false); // TODO: deal with reversed rows
+    storeRow(rowNumber); // TODO: deal with reversed rows
     if (tryStackedDecode) {
       // When the image is 180-rotated, then rows are sorted in wrong direction.
       // Try twice with both the directions.
@@ -176,7 +185,7 @@ public final class RSSExpandedReader extends AbstractRSSReader {
         return ps;
       }
     }
-    
+
     throw NotFoundException.getNotFoundInstance();
   }
 
@@ -196,7 +205,7 @@ public final class RSSExpandedReader extends AbstractRSSReader {
 
     List<ExpandedPair> ps = null;
     try {
-      ps = checkRows(new ArrayList<ExpandedRow>(), 0);
+      ps = checkRows(new ArrayList<>(), 0);
     } catch (NotFoundException e) {
       // OK
     }
@@ -213,59 +222,89 @@ public final class RSSExpandedReader extends AbstractRSSReader {
   private List<ExpandedPair> checkRows(List<ExpandedRow> collectedRows, int currentRow) throws NotFoundException {
     for (int i = currentRow; i < rows.size(); i++) {
       ExpandedRow row = rows.get(i);
-      this.pairs.clear();
-      for (ExpandedRow collectedRow : collectedRows) {
-        this.pairs.addAll(collectedRow.getPairs());
-      }
       this.pairs.addAll(row.getPairs());
+      int addSize = row.getPairs().size();
 
-      if (!isValidSequence(this.pairs)) {
-        continue;
-      }
-
-      if (checkChecksum()) {
-        return this.pairs;
-      }
-
-      List<ExpandedRow> rs = new ArrayList<>();
-      rs.addAll(collectedRows);
-      rs.add(row);
-      try {
-        // Recursion: try to add more rows
-        return checkRows(rs, i + 1);
-      } catch (NotFoundException e) {
-        // We failed, try the next candidate
+      if (isValidSequence(this.pairs, false)) {
+        if (checkChecksum()) {
+          return this.pairs;
+        }
+        collectedRows.add(row);
+        try {
+          // Recursion: try to add more rows
+          return checkRows(collectedRows, i + 1);
+        } catch (NotFoundException e) {
+          // We failed, try the next candidate
+          collectedRows.remove(collectedRows.size() - 1);
+          this.pairs.subList(this.pairs.size() - addSize, this.pairs.size()).clear();
+        }
+      } else {
+        this.pairs.subList(this.pairs.size() - addSize, this.pairs.size()).clear();
       }
     }
 
     throw NotFoundException.getNotFoundInstance();
   }
 
-  // Whether the pairs form a valid find pattern seqience,
-  // either complete or a prefix
-  private static boolean isValidSequence(List<ExpandedPair> pairs) {
+  // Whether the pairs form a valid finder pattern sequence, either complete or a prefix
+  private static boolean isValidSequence(List<ExpandedPair> pairs, boolean complete) {
+
     for (int[] sequence : FINDER_PATTERN_SEQUENCES) {
-      if (pairs.size() > sequence.length) {
-        continue;
-      }
-
-      boolean stop = true;
-      for (int j = 0; j < pairs.size(); j++) {
-        if (pairs.get(j).getFinderPattern().getValue() != sequence[j]) {
-          stop = false;
-          break;
+      boolean sizeOk = (complete ? pairs.size() == sequence.length : pairs.size() <= sequence.length);
+      if (sizeOk) {
+        boolean stop = true;
+        for (int j = 0; j < pairs.size(); j++) {
+          if (pairs.get(j).getFinderPattern().getValue() != sequence[j]) {
+            stop = false;
+            break;
+          }
         }
-      }
-
-      if (stop) {
-        return true;
+        if (stop) {
+          return true;
+        }
       }
     }
 
     return false;
   }
 
-  private void storeRow(int rowNumber, boolean wasReversed) {
+  // Whether the pairs, plus another pair of the specified type, would together
+  // form a valid finder pattern sequence, either complete or partial
+  private static boolean mayFollow(List<ExpandedPair> pairs, int value) {
+
+    if (pairs.isEmpty()) {
+      return true;
+    }
+
+    for (int[] sequence : FINDER_PATTERN_SEQUENCES) {
+      if (pairs.size() + 1 <= sequence.length) {
+        // the proposed sequence (i.e. pairs + value) would fit in this allowed sequence
+        for (int i = pairs.size(); i < sequence.length; i++) {
+          if (sequence[i] == value) {
+            // we found our value in this allowed sequence, check to see if the elements preceding it match our existing
+            // pairs; note our existing pairs may not be a full sequence (e.g. if processing a row in a stacked symbol)
+            boolean matched = true;
+            for (int j = 0; j < pairs.size(); j++) {
+              int allowed = sequence[i - j - 1];
+              int actual = pairs.get(pairs.size() - j - 1).getFinderPattern().getValue();
+              if (allowed != actual) {
+                matched = false;
+                break;
+              }
+            }
+            if (matched) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    // the proposed finder pattern sequence is illegal
+    return false;
+  }
+
+  private void storeRow(int rowNumber) {
     // Discard if duplicate above or below; otherwise insert in order by row number.
     int insertPos = 0;
     boolean prevIsSame = false;
@@ -287,40 +326,32 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     // it will prevent us from detecting the barcode.
     // Try to merge partial rows
 
-    // Check whether the row is part of an allready detected row
+    // Check whether the row is part of an already detected row
     if (isPartialRow(this.pairs, this.rows)) {
       return;
     }
 
-    this.rows.add(insertPos, new ExpandedRow(this.pairs, rowNumber, wasReversed));
+    this.rows.add(insertPos, new ExpandedRow(this.pairs, rowNumber));
 
     removePartialRows(this.pairs, this.rows);
   }
 
-  // Remove all the rows that contains only specified pairs 
-  private static void removePartialRows(List<ExpandedPair> pairs, List<ExpandedRow> rows) {
+  // Remove all the rows that contains only specified pairs
+  private static void removePartialRows(Collection<ExpandedPair> pairs, Collection<ExpandedRow> rows) {
     for (Iterator<ExpandedRow> iterator = rows.iterator(); iterator.hasNext();) {
       ExpandedRow r = iterator.next();
-      if (r.getPairs().size() == pairs.size()) {
-        continue;
-      }
-      boolean allFound = true;
-      for (ExpandedPair p : r.getPairs()) {
-        boolean found = false;
-        for (ExpandedPair pp : pairs) {
-          if (p.equals(pp)) {
-            found = true;
+      if (r.getPairs().size() != pairs.size()) {
+        boolean allFound = true;
+        for (ExpandedPair p : r.getPairs()) {
+          if (!pairs.contains(p)) {
+            allFound = false;
             break;
           }
         }
-        if (!found) {
-          allFound = false;
-          break;
+        if (allFound) {
+          // 'pairs' contains all the pairs from the row 'r'
+          iterator.remove();
         }
-      }
-      if (allFound) {
-        // 'pairs' contains all the pairs from the row 'r'
-        iterator.remove();
       }
     }
   }
@@ -365,12 +396,14 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     ResultPoint[] firstPoints = pairs.get(0).getFinderPattern().getResultPoints();
     ResultPoint[] lastPoints  = pairs.get(pairs.size() - 1).getFinderPattern().getResultPoints();
 
-    return new Result(
+    Result result = new Result(
           resultingString,
           null,
           new ResultPoint[]{firstPoints[0], firstPoints[1], lastPoints[0], lastPoints[1]},
           BarcodeFormat.RSS_EXPANDED
       );
+    result.putMetadata(ResultMetadataType.SYMBOLOGY_IDENTIFIER, "]e0");
+    return result;
   }
 
   private boolean checkChecksum() {
@@ -424,35 +457,39 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     }
 
     FinderPattern pattern;
+    DataCharacter leftChar = null;
 
     boolean keepFinding = true;
     int forcedOffset = -1;
     do {
       this.findNextPair(row, previousPairs, forcedOffset);
-      pattern = parseFoundFinderPattern(row, rowNumber, isOddPattern);
+      pattern = parseFoundFinderPattern(row, rowNumber, isOddPattern, previousPairs);
       if (pattern == null) {
-        forcedOffset = getNextSecondBar(row, this.startEnd[0]);
+        forcedOffset = getNextSecondBar(row, this.startEnd[0]); // probable false positive, keep looking
       } else {
-        keepFinding = false;
+        try {
+          leftChar  = this.decodeDataCharacter(row, pattern, isOddPattern, true);
+          keepFinding = false;
+        } catch (NotFoundException ignored) {
+          forcedOffset = getNextSecondBar(row, this.startEnd[0]); // probable false positive, keep looking
+        }
       }
     } while (keepFinding);
 
     // When stacked symbol is split over multiple rows, there's no way to guess if this pair can be last or not.
     // boolean mayBeLast = checkPairSequence(previousPairs, pattern);
 
-    DataCharacter leftChar  = this.decodeDataCharacter(row, pattern, isOddPattern, true);
-    
     if (!previousPairs.isEmpty() && previousPairs.get(previousPairs.size() - 1).mustBeLast()) {
       throw NotFoundException.getNotFoundInstance();
     }
-    
+
     DataCharacter rightChar;
     try {
       rightChar = this.decodeDataCharacter(row, pattern, isOddPattern, false);
     } catch (NotFoundException ignored) {
       rightChar = null;
     }
-    return new ExpandedPair(leftChar, rightChar, pattern, true);
+    return new ExpandedPair(leftChar, rightChar, pattern);
   }
 
   private void findNextPair(BitArray row, List<ExpandedPair> previousPairs, int forcedOffset)
@@ -491,7 +528,7 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     int counterPosition = 0;
     int patternStart = rowOffset;
     for (int x = rowOffset; x < width; x++) {
-      if (row.get(x) ^ isWhite) {
+      if (row.get(x) != isWhite) {
         counters[counterPosition]++;
       } else {
         if (counterPosition == 3) {
@@ -534,7 +571,10 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     }
   }
 
-  private FinderPattern parseFoundFinderPattern(BitArray row, int rowNumber, boolean oddPattern) {
+  private FinderPattern parseFoundFinderPattern(BitArray row,
+                                                int rowNumber,
+                                                boolean oddPattern,
+                                                List<ExpandedPair> previousPairs) {
     // Actually we found elements 2-5.
     int firstCounter;
     int start;
@@ -574,6 +614,27 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     } catch (NotFoundException ignored) {
       return null;
     }
+
+    // Check that the pattern type that we *think* we found can exist as part of a valid sequence of finder patterns.
+    if (!mayFollow(previousPairs, value)) {
+      return null;
+    }
+
+    // Check that the finder pattern that we *think* we found is not too far from where we would expect to find it,
+    // given that finder patterns are 15 modules wide and the data characters between them are 17 modules wide.
+    if (!previousPairs.isEmpty()) {
+      ExpandedPair prev = previousPairs.get(previousPairs.size() - 1);
+      int prevStart = prev.getFinderPattern().getStartEnd()[0];
+      int prevEnd = prev.getFinderPattern().getStartEnd()[1];
+      int prevWidth = prevEnd - prevStart;
+      float charWidth = (prevWidth / FINDER_PATTERN_MODULES) * DATA_CHARACTER_MODULES;
+      float minX = prevEnd + (2 * charWidth * (1 - MAX_FINDER_PATTERN_DISTANCE_VARIANCE));
+      float maxX = prevEnd + (2 * charWidth * (1 + MAX_FINDER_PATTERN_DISTANCE_VARIANCE));
+      if (start < minX || start > maxX) {
+        return null;
+      }
+    }
+
     return new FinderPattern(value, new int[] {start, end}, start, end, rowNumber);
   }
 
@@ -582,14 +643,7 @@ public final class RSSExpandedReader extends AbstractRSSReader {
                                     boolean isOddPattern,
                                     boolean leftChar) throws NotFoundException {
     int[] counters = this.getDataCharacterCounters();
-    counters[0] = 0;
-    counters[1] = 0;
-    counters[2] = 0;
-    counters[3] = 0;
-    counters[4] = 0;
-    counters[5] = 0;
-    counters[6] = 0;
-    counters[7] = 0;
+    Arrays.fill(counters, 0);
 
     if (leftChar) {
       recordPatternInReverse(row, pattern.getStartEnd()[0], counters);
@@ -655,13 +709,11 @@ public final class RSSExpandedReader extends AbstractRSSReader {
       oddSum += oddCounts[i];
     }
     int evenChecksumPortion = 0;
-    //int evenSum = 0;
     for (int i = evenCounts.length - 1; i >= 0; i--) {
       if (isNotA1left(pattern, isOddPattern, leftChar)) {
         int weight = WEIGHTS[weightRowNumber][2 * i + 1];
         evenChecksumPortion += evenCounts[i] * weight;
       }
-      //evenSum += evenCounts[i];
     }
     int checksumPortion = oddChecksumPortion + evenChecksumPortion;
 
@@ -710,51 +762,55 @@ public final class RSSExpandedReader extends AbstractRSSReader {
     int mismatch = oddSum + evenSum - numModules;
     boolean oddParityBad = (oddSum & 0x01) == 1;
     boolean evenParityBad = (evenSum & 0x01) == 0;
-    if (mismatch == 1) {
-      if (oddParityBad) {
-        if (evenParityBad) {
-          throw NotFoundException.getNotFoundInstance();
-        }
-        decrementOdd = true;
-      } else {
-        if (!evenParityBad) {
-          throw NotFoundException.getNotFoundInstance();
-        }
-        decrementEven = true;
-      }
-    } else if (mismatch == -1) {
-      if (oddParityBad) {
-        if (evenParityBad) {
-          throw NotFoundException.getNotFoundInstance();
-        }
-        incrementOdd = true;
-      } else {
-        if (!evenParityBad) {
-          throw NotFoundException.getNotFoundInstance();
-        }
-        incrementEven = true;
-      }
-    } else if (mismatch == 0) {
-      if (oddParityBad) {
-        if (!evenParityBad) {
-          throw NotFoundException.getNotFoundInstance();
-        }
-        // Both bad
-        if (oddSum < evenSum) {
-          incrementOdd = true;
-          decrementEven = true;
-        } else {
+    switch (mismatch) {
+      case 1:
+        if (oddParityBad) {
+          if (evenParityBad) {
+            throw NotFoundException.getNotFoundInstance();
+          }
           decrementOdd = true;
+        } else {
+          if (!evenParityBad) {
+            throw NotFoundException.getNotFoundInstance();
+          }
+          decrementEven = true;
+        }
+        break;
+      case -1:
+        if (oddParityBad) {
+          if (evenParityBad) {
+            throw NotFoundException.getNotFoundInstance();
+          }
+          incrementOdd = true;
+        } else {
+          if (!evenParityBad) {
+            throw NotFoundException.getNotFoundInstance();
+          }
           incrementEven = true;
         }
-      } else {
-        if (evenParityBad) {
-          throw NotFoundException.getNotFoundInstance();
+        break;
+      case 0:
+        if (oddParityBad) {
+          if (!evenParityBad) {
+            throw NotFoundException.getNotFoundInstance();
+          }
+          // Both bad
+          if (oddSum < evenSum) {
+            incrementOdd = true;
+            decrementEven = true;
+          } else {
+            decrementOdd = true;
+            incrementEven = true;
+          }
+        } else {
+          if (evenParityBad) {
+            throw NotFoundException.getNotFoundInstance();
+          }
+          // Nothing to do!
         }
-        // Nothing to do!
-      }
-    } else {
-      throw NotFoundException.getNotFoundInstance();
+        break;
+      default:
+        throw NotFoundException.getNotFoundInstance();
     }
 
     if (incrementOdd) {

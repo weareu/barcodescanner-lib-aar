@@ -18,6 +18,8 @@ package com.google.zxing.common;
 
 import com.google.zxing.FormatException;
 
+import java.nio.charset.Charset;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -58,16 +60,19 @@ public enum CharacterSetECI {
   GB18030(29, "GB2312", "EUC_CN", "GBK"),
   EUC_KR(30, "EUC-KR");
 
+  // only character sets supported by the current JVM are registered here
   private static final Map<Integer,CharacterSetECI> VALUE_TO_ECI = new HashMap<>();
   private static final Map<String,CharacterSetECI> NAME_TO_ECI = new HashMap<>();
   static {
     for (CharacterSetECI eci : values()) {
-      for (int value : eci.values) {
-        VALUE_TO_ECI.put(value, eci);
-      }
-      NAME_TO_ECI.put(eci.name(), eci);
-      for (String name : eci.otherEncodingNames) {
-        NAME_TO_ECI.put(name, eci);
+      if (Charset.isSupported(eci.name())) {
+        for (int value : eci.values) {
+          VALUE_TO_ECI.put(value, eci);
+        }
+        NAME_TO_ECI.put(eci.name(), eci);
+        for (String name : eci.otherEncodingNames) {
+          NAME_TO_ECI.put(name, eci);
+        }
       }
     }
   }
@@ -78,7 +83,7 @@ public enum CharacterSetECI {
   CharacterSetECI(int value) {
     this(new int[] {value});
   }
-  
+
   CharacterSetECI(int value, String... otherEncodingNames) {
     this.values = new int[] {value};
     this.otherEncodingNames = otherEncodingNames;
@@ -91,6 +96,19 @@ public enum CharacterSetECI {
 
   public int getValue() {
     return values[0];
+  }
+
+  public Charset getCharset() {
+    return Charset.forName(name());
+  }
+
+  /**
+   * @param charset Java character set object
+   * @return CharacterSetECI representing ECI for character encoding, or null if it is legal
+   *   but unsupported
+   */
+  public static CharacterSetECI getCharacterSetECI(Charset charset) {
+    return NAME_TO_ECI.get(charset.name());
   }
 
   /**
