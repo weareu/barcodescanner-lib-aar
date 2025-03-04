@@ -25,7 +25,9 @@ import java.math.BigInteger;
 import java.util.Arrays;
 
 /**
- * <p>This class contains the methods for decoding the PDF417 codewords.</p>
+ * <p>
+ * This class contains the methods for decoding the PDF417 codewords.
+ * </p>
  *
  * @author SITA Lab (kevin.osullivan@sita.aero)
  * @author Guenther Grau
@@ -50,6 +52,7 @@ final class DecodedBitStreamParser {
   private static final int ECI_CHARSET = 927;
   private static final int BEGIN_MACRO_PDF417_CONTROL_BLOCK = 928;
   private static final int BEGIN_MACRO_PDF417_OPTIONAL_FIELD = 923;
+
   private static final int MACRO_PDF417_TERMINATOR = 922;
   private static final int MODE_SHIFT_TO_BYTE_COMPACTION_MODE = 913;
   private static final int MAX_NUMERIC_CODEWORDS = 15;
@@ -70,11 +73,9 @@ final class DecodedBitStreamParser {
   private static final int PS = 29;
   private static final int PAL = 29;
 
-  private static final char[] PUNCT_CHARS =
-      ";<>@[\\]_`~!\r\t,:\n-.$/\"|*()?{}'".toCharArray();
+  private static final char[] PUNCT_CHARS = ";<>@[\\]_`~!\r\t,:\n-.$/\"|*()?{}'".toCharArray();
 
-  private static final char[] MIXED_CHARS =
-      "0123456789&\r\t,:#-.$/+%*=^".toCharArray();
+  private static final char[] MIXED_CHARS = "0123456789&\r\t,:#-.$/+%*=^".toCharArray();
 
   /**
    * Table containing values for the exponent of 900.
@@ -147,14 +148,14 @@ final class DecodedBitStreamParser {
     if (result.isEmpty() && resultMetadata.getFileId() == null) {
       throw FormatException.getFormatInstance();
     }
-    DecoderResult decoderResult = new DecoderResult(null, result.toString(), null, ecLevel);
+    DecoderResult decoderResult = new DecoderResult(result.getRawBytes(), result.toString(), null, ecLevel);
     decoderResult.setOther(resultMetadata);
     return decoderResult;
   }
 
   @SuppressWarnings("deprecation")
   static int decodeMacroBlock(int[] codewords, int codeIndex, PDF417ResultMetadata resultMetadata)
-      throws FormatException {
+          throws FormatException {
     if (codeIndex + NUMBER_OF_SEQUENCE_CODEWORDS > codewords[0]) {
       // we must have at least two bytes left for the segment index
       throw FormatException.getFormatInstance();
@@ -175,14 +176,17 @@ final class DecodedBitStreamParser {
       }
     }
 
-    // Decoding the fileId codewords as 0-899 numbers, each 0-filled to width 3. This follows the spec
-    // (See ISO/IEC 15438:2015 Annex H.6) and preserves all info, but some generators (e.g. TEC-IT) write
-    // the fileId using text compaction, so in those cases the fileId will appear mangled.
+    // Decoding the fileId codewords as 0-899 numbers, each 0-filled to width 3.
+    // This follows the spec
+    // (See ISO/IEC 15438:2015 Annex H.6) and preserves all info, but some
+    // generators (e.g. TEC-IT) write
+    // the fileId using text compaction, so in those cases the fileId will appear
+    // mangled.
     StringBuilder fileId = new StringBuilder();
     while (codeIndex < codewords[0] &&
-           codeIndex < codewords.length &&
-           codewords[codeIndex] != MACRO_PDF417_TERMINATOR &&
-           codewords[codeIndex] != BEGIN_MACRO_PDF417_OPTIONAL_FIELD) {
+            codeIndex < codewords.length &&
+            codewords[codeIndex] != MACRO_PDF417_TERMINATOR &&
+            codewords[codeIndex] != BEGIN_MACRO_PDF417_OPTIONAL_FIELD) {
       fileId.append(String.format("%03d", codewords[codeIndex]));
       codeIndex++;
     }
@@ -275,7 +279,7 @@ final class DecodedBitStreamParser {
       }
       if (optionalFieldsLength > 0) {
         resultMetadata.setOptionalData(Arrays.copyOfRange(codewords,
-            optionalFieldsStart, optionalFieldsStart + optionalFieldsLength));
+                optionalFieldsStart, optionalFieldsStart + optionalFieldsLength));
       }
     }
 
@@ -283,8 +287,10 @@ final class DecodedBitStreamParser {
   }
 
   /**
-   * Text Compaction mode (see 5.4.1.5) permits all printable ASCII characters to be
-   * encoded, i.e. values 32 - 126 inclusive in accordance with ISO/IEC 646 (IRV), as
+   * Text Compaction mode (see 5.4.1.5) permits all printable ASCII characters to
+   * be
+   * encoded, i.e. values 32 - 126 inclusive in accordance with ISO/IEC 646 (IRV),
+   * as
    * well as selected control characters.
    *
    * @param codewords The array of codewords (data + error)
@@ -358,13 +364,15 @@ final class DecodedBitStreamParser {
    * return (ASCII value 13). The Text Compaction mode also includes various latch
    * and shift characters which are used exclusively within the mode. The Text
    * Compaction mode encodes up to 2 characters per codeword. The compaction rules
-   * for converting data into PDF417 codewords are defined in 5.4.2.2. The sub-mode
+   * for converting data into PDF417 codewords are defined in 5.4.2.2. The
+   * sub-mode
    * switches are defined in 5.4.2.3.
    *
    * @param textCompactionData The text compaction data.
    * @param byteCompactionData The byte compaction data if there
    *                           was a mode shift.
-   * @param length             The size of the text compaction and byte compaction data.
+   * @param length             The size of the text compaction and byte compaction
+   *                           data.
    * @param result             The decoded data is appended to the result.
    * @param startMode          The mode in which decoding starts
    * @return The mode in which decoding ended
@@ -375,8 +383,10 @@ final class DecodedBitStreamParser {
                                            ECIStringBuilder result,
                                            Mode startMode) {
     // Beginning from an initial state
-    // The default compaction mode for PDF417 in effect at the start of each symbol shall always be Text
-    // Compaction mode Alpha sub-mode (uppercase alphabetic). A latch codeword from another mode to the Text
+    // The default compaction mode for PDF417 in effect at the start of each symbol
+    // shall always be Text
+    // Compaction mode Alpha sub-mode (uppercase alphabetic). A latch codeword from
+    // another mode to the Text
     // Compaction mode shall always switch to the Text Compaction Alpha sub-mode.
     Mode subMode = startMode;
     Mode priorToShiftMode = startMode;
@@ -553,8 +563,10 @@ final class DecodedBitStreamParser {
   }
 
   /**
-   * Byte Compaction mode (see 5.4.3) permits all 256 possible 8-bit byte values to be encoded.
-   * This includes all ASCII characters value 0 to 127 inclusive and provides for international
+   * Byte Compaction mode (see 5.4.3) permits all 256 possible 8-bit byte values
+   * to be encoded.
+   * This includes all ASCII characters value 0 to 127 inclusive and provides for
+   * international
    * character set support.
    *
    * @param mode      The byte compaction mode i.e. 901 or 924
@@ -570,7 +582,7 @@ final class DecodedBitStreamParser {
     boolean end = false;
 
     while (codeIndex < codewords[0] && !end) {
-      //handle leading ECIs
+      // handle leading ECIs
       while (codeIndex < codewords[0] && codewords[codeIndex] == ECI_CHARSET) {
         result.appendECI(codewords[++codeIndex]);
         codeIndex++;
@@ -579,18 +591,18 @@ final class DecodedBitStreamParser {
       if (codeIndex >= codewords[0] || codewords[codeIndex] >= TEXT_COMPACTION_MODE_LATCH) {
         end = true;
       } else {
-        //decode one block of 5 codewords to 6 bytes
+        // decode one block of 5 codewords to 6 bytes
         long value = 0;
         int count = 0;
         do {
           value = 900 * value + codewords[codeIndex++];
           count++;
         } while (count < 5 &&
-                 codeIndex < codewords[0] &&
-                 codewords[codeIndex] < TEXT_COMPACTION_MODE_LATCH);
+                codeIndex < codewords[0] &&
+                codewords[codeIndex] < TEXT_COMPACTION_MODE_LATCH);
         if (count == 5 && (mode == BYTE_COMPACTION_MODE_LATCH_6 ||
-                           codeIndex < codewords[0] &&
-                           codewords[codeIndex] < TEXT_COMPACTION_MODE_LATCH)) {
+                codeIndex < codewords[0] &&
+                        codewords[codeIndex] < TEXT_COMPACTION_MODE_LATCH)) {
           for (int i = 0; i < 6; i++) {
             result.append((byte) (value >> (8 * (5 - i))));
           }
@@ -614,7 +626,8 @@ final class DecodedBitStreamParser {
   }
 
   /**
-   * Numeric Compaction mode (see 5.4.4) permits efficient encoding of numeric data strings.
+   * Numeric Compaction mode (see 5.4.4) permits efficient encoding of numeric
+   * data strings.
    *
    * @param codewords The array of codewords (data + error)
    * @param codeIndex The current index into the codeword array.
@@ -651,7 +664,7 @@ final class DecodedBitStreamParser {
       }
       if ((count % MAX_NUMERIC_CODEWORDS == 0 || code == NUMERIC_COMPACTION_MODE_LATCH || end) && count > 0) {
         // Re-invoking Numeric Compaction mode (by using codeword 902
-        // while in Numeric Compaction mode) serves  to terminate the
+        // while in Numeric Compaction mode) serves to terminate the
         // current Numeric Compaction mode grouping as described in 5.4.4.2,
         // and then to start a new one grouping.
         result.append(decodeBase900toBase10(numericCodewords, count));
@@ -669,40 +682,41 @@ final class DecodedBitStreamParser {
    * @return The decoded string representing the Numeric data.
    */
   /*
-     EXAMPLE
-     Encode the fifteen digit numeric string 000213298174000
-     Prefix the numeric string with a 1 and set the initial value of
-     t = 1 000 213 298 174 000
-     Calculate codeword 0
-     d0 = 1 000 213 298 174 000 mod 900 = 200
-
-     t = 1 000 213 298 174 000 div 900 = 1 111 348 109 082
-     Calculate codeword 1
-     d1 = 1 111 348 109 082 mod 900 = 282
-
-     t = 1 111 348 109 082 div 900 = 1 234 831 232
-     Calculate codeword 2
-     d2 = 1 234 831 232 mod 900 = 632
-
-     t = 1 234 831 232 div 900 = 1 372 034
-     Calculate codeword 3
-     d3 = 1 372 034 mod 900 = 434
-
-     t = 1 372 034 div 900 = 1 524
-     Calculate codeword 4
-     d4 = 1 524 mod 900 = 624
-
-     t = 1 524 div 900 = 1
-     Calculate codeword 5
-     d5 = 1 mod 900 = 1
-     t = 1 div 900 = 0
-     Codeword sequence is: 1, 624, 434, 632, 282, 200
-
-     Decode the above codewords involves
-       1 x 900 power of 5 + 624 x 900 power of 4 + 434 x 900 power of 3 +
-     632 x 900 power of 2 + 282 x 900 power of 1 + 200 x 900 power of 0 = 1000213298174000
-
-     Remove leading 1 =>  Result is 000213298174000
+   * EXAMPLE
+   * Encode the fifteen digit numeric string 000213298174000
+   * Prefix the numeric string with a 1 and set the initial value of
+   * t = 1 000 213 298 174 000
+   * Calculate codeword 0
+   * d0 = 1 000 213 298 174 000 mod 900 = 200
+   *
+   * t = 1 000 213 298 174 000 div 900 = 1 111 348 109 082
+   * Calculate codeword 1
+   * d1 = 1 111 348 109 082 mod 900 = 282
+   *
+   * t = 1 111 348 109 082 div 900 = 1 234 831 232
+   * Calculate codeword 2
+   * d2 = 1 234 831 232 mod 900 = 632
+   *
+   * t = 1 234 831 232 div 900 = 1 372 034
+   * Calculate codeword 3
+   * d3 = 1 372 034 mod 900 = 434
+   *
+   * t = 1 372 034 div 900 = 1 524
+   * Calculate codeword 4
+   * d4 = 1 524 mod 900 = 624
+   *
+   * t = 1 524 div 900 = 1
+   * Calculate codeword 5
+   * d5 = 1 mod 900 = 1
+   * t = 1 div 900 = 0
+   * Codeword sequence is: 1, 624, 434, 632, 282, 200
+   *
+   * Decode the above codewords involves
+   * 1 x 900 power of 5 + 624 x 900 power of 4 + 434 x 900 power of 3 +
+   * 632 x 900 power of 2 + 282 x 900 power of 1 + 200 x 900 power of 0 =
+   * 1000213298174000
+   *
+   * Remove leading 1 => Result is 000213298174000
    */
   private static String decodeBase900toBase10(int[] codewords, int count) throws FormatException {
     BigInteger result = BigInteger.ZERO;
@@ -715,5 +729,4 @@ final class DecodedBitStreamParser {
     }
     return resultString.substring(1);
   }
-
 }
