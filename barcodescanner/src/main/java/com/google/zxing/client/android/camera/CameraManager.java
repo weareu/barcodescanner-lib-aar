@@ -61,6 +61,7 @@
    private int requestedCameraId = OpenCameraInterface.NO_REQUESTED_CAMERA;
    private int requestedFramingRectWidth;
    private int requestedFramingRectHeight;
+   private int requestedFramingRectTop;
    private WindowManager windowManager;
  
    /**
@@ -96,9 +97,10 @@
        initialized = true;
        configManager.initFromCameraParameters(theCamera);
        if (requestedFramingRectWidth > 0 && requestedFramingRectHeight > 0) {
-         setManualFramingRect(requestedFramingRectWidth, requestedFramingRectHeight);
+         setManualFramingRect(requestedFramingRectWidth, requestedFramingRectHeight, requestedFramingRectTop);
          requestedFramingRectWidth = 0;
          requestedFramingRectHeight = 0;
+         requestedFramingRectTop = 0;
        }
      }
  
@@ -235,13 +237,20 @@
          // Called early, before init even finished
          return null;
        }
- 
+
        int width = findDesiredDimensionInRange(screenResolution.x, MIN_FRAME_WIDTH, MAX_FRAME_WIDTH);
        int height = findDesiredDimensionInRange(screenResolution.y, MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
- 
+
        int leftOffset = (screenResolution.x - width) / 2;
        int topOffset = (screenResolution.y - height) / 2;
+
+       if (requestedFramingRectTop > 0 && (requestedFramingRectTop + height) <= screenResolution.y) {
+         topOffset = requestedFramingRectTop;
+       }
+
        framingRect = new Rect(leftOffset, topOffset, leftOffset + width, topOffset + height);
+
+       Log.d(TAG, "Framing Rect (UI): " + framingRect.toString());
      }
      return framingRect;
    }
@@ -273,22 +282,23 @@
          // Called early, before init even finished
          return null;
        }
-       // rect.left = rect.left * cameraResolution.x / screenResolution.x;
-       // rect.right = rect.right * cameraResolution.x / screenResolution.x;
-       // rect.top = rect.top * cameraResolution.y / screenResolution.y;
-       // rect.bottom = rect.bottom * cameraResolution.y / screenResolution.y;
-       int rotation = context.getApplicationContext().getResources().getConfiguration().orientation;
-       if (rotation == Configuration.ORIENTATION_PORTRAIT) {
-         rect.left = rect.left * cameraResolution.y / screenResolution.x;
-         rect.right = rect.right * cameraResolution.y / screenResolution.x;
-         rect.top = rect.top * cameraResolution.x / screenResolution.y;
-         rect.bottom = rect.bottom * cameraResolution.x / screenResolution.y;
-       } else {
-         rect.left = rect.left * cameraResolution.x / screenResolution.x;
-         rect.right = rect.right * cameraResolution.x / screenResolution.x;
-         rect.top = rect.top * cameraResolution.y / screenResolution.y;
-         rect.bottom = rect.bottom * cameraResolution.y / screenResolution.y;
-       }
+       // Convert screen coordinates to camera preview coordinates
+       rect.left = Math.round(rect.left * ((float) cameraResolution.x / screenResolution.x));
+       rect.right = Math.round(rect.right * ((float) cameraResolution.x / screenResolution.x));
+       rect.top = Math.round((screenResolution.y - framingRect.bottom) * ((float) cameraResolution.y / screenResolution.y));
+       rect.bottom = Math.round((screenResolution.y - framingRect.top) * ((float) cameraResolution.y / screenResolution.y));
+//       int rotation = context.getApplicationContext().getResources().getConfiguration().orientation;
+//       if (rotation == Configuration.ORIENTATION_PORTRAIT) {
+//         rect.left = rect.left * cameraResolution.y / screenResolution.x;
+//         rect.right = rect.right * cameraResolution.y / screenResolution.x;
+//         rect.top = rect.top * cameraResolution.x / screenResolution.y;
+//         rect.bottom = rect.bottom * cameraResolution.x / screenResolution.y;
+//       } else {
+//         rect.left = rect.left * cameraResolution.x / screenResolution.x;
+//         rect.right = rect.right * cameraResolution.x / screenResolution.x;
+//         rect.top = rect.top * cameraResolution.y / screenResolution.y;
+//         rect.bottom = rect.bottom * cameraResolution.y / screenResolution.y;
+//       }
        framingRectInPreview = rect;
      }
      return framingRectInPreview;
@@ -314,8 +324,9 @@
     *
     * @param width The width in pixels to scan.
     * @param height The height in pixels to scan.
+    * @param top Top offset to scan. If 0, top offset it will be centered.
     */
-   public synchronized void setManualFramingRect(int width, int height) {
+   public synchronized void setManualFramingRect(int width, int height, int top) {
      if (initialized) {
        Point screenResolution = configManager.getScreenResolution();
        if (width > screenResolution.x) {
@@ -326,6 +337,9 @@
        }
        int leftOffset = (screenResolution.x - width) / 2;
        int topOffset = (screenResolution.y - height) / 2;
+       if(top > 0 && (top + height) <= screenResolution.y) {
+        topOffset = top;
+       }
        framingRect = new Rect(leftOffset, topOffset, leftOffset + width, topOffset + height);
        // framingRect = getFramingRect();
  
@@ -334,6 +348,7 @@
      } else {
        requestedFramingRectWidth = width;
        requestedFramingRectHeight = height;
+       requestedFramingRectTop = top;
      }
    }
  

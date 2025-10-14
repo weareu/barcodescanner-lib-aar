@@ -100,11 +100,13 @@ public final class Intents {
 
     /**
      * Optional parameters to specify the width and height of the scanning rectangle in pixels.
+     * Can speciy top offset or default 0. When 0 will center rectangle.
      * The app will try to honor these, but will clamp them to the size of the preview frame.
      * You should specify both or neither, and pass the size as an int.
      */
     public static final String WIDTH = "SCAN_WIDTH";
     public static final String HEIGHT = "SCAN_HEIGHT";
+    public static final String TOP = "SCAN_TOP";
 
     /**
      * Desired duration in milliseconds for which to pause after a successful scan before

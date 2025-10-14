@@ -225,7 +225,7 @@
      inactivityTimer.onResume();
  
      Intent intent = getIntent();
- 
+
      copyToClipboard = prefs.getBoolean(PreferencesActivity.KEY_COPY_TO_CLIPBOARD, true)
          && (intent == null || intent.getBooleanExtra(Intents.Scan.SAVE_HISTORY, true));
  
@@ -252,8 +252,9 @@
          if (intent.hasExtra(Intents.Scan.WIDTH) && intent.hasExtra(Intents.Scan.HEIGHT)) {
            int width = intent.getIntExtra(Intents.Scan.WIDTH, 0);
            int height = intent.getIntExtra(Intents.Scan.HEIGHT, 0);
+           int top = intent.getIntExtra(Intents.Scan.TOP, 0);
            if (width > 0 && height > 0) {
-             cameraManager.setManualFramingRect(width, height);
+             cameraManager.setManualFramingRect(width, height, top);
            }
          }
  
