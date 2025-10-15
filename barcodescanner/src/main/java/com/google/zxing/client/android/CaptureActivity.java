@@ -21,7 +21,7 @@
  import android.content.pm.FeatureInfo;
  import android.content.pm.PackageManager;
  import android.hardware.Camera;
- import android.support.v4.content.LocalBroadcastManager;
+ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
  import android.widget.Button;
  import com.google.zxing.BarcodeFormat;
  import com.google.zxing.DecodeHintType;
@@ -832,4 +832,3 @@
      viewfinderView.drawViewfinder();
    }
  }
- 
